@@ -1,0 +1,47 @@
+.navbar {
+    background-color: white; /* Remove !important */
+}
+
+.navbar .nav-link, .navbar-brand {
+    font-weight: bold;
+    color: #1A2F44; /* Removed !important */
+}
+
+.navbar .nav-link:hover {
+    color: #1A2F44;
+}
+
+i {
+    color: #1A2F44;
+}
+
+footer {
+    margin-top: auto;
+    background-color: #1A2F44;
+    color: white;
+    font-weight: bold;
+}
+
+.footerList {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+.footerList li {
+    margin: 10px 0;
+    text-align: right;
+}
+
+.footerList li a {
+    color: white;
+    text-decoration: none;
+}
+
+.card-header {
+    background-color: white;
+}
+
+.card-body {
+    background-color:whitesmoke;
+}
