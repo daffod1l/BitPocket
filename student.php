@@ -1,24 +1,18 @@
 <?php
-$host = "localhost";
-$username = "root";
-$password = "";
-$database = "perksway";
+    session_start();
+    require_once 'db.php';
 
-$conn = new mysqli($host, $username, $password, $database);
-
-if ($conn->connect_error) {
-    die("Connection failed: " . $conn->connect_error);
-}
-
-$user_id = 2; // Replace with session user ID
-
+    if (!isset($_SESSION['user_id'])) {
+        header("Location: login.php");
+        exit();
+    }
 // Fetch enrolled classes
-$sql = "SELECT c.id AS class_id, c.name AS class_name, uStudent.name as student_name, uAdmin.name as admin_name,
+$sql = "SELECT c.id AS class_id, c.name AS class_name, uStudent.last_name as student_name, uAdmin.last_name as admin_name,
         (SELECT COUNT(*) FROM class_students WHERE class_id = c.id) AS student_count
         from classes c
         join class_students cs on cs.Class_ID = c.id
         join users uStudent on cs.Student_ID = uStudent.ID
-        join users uAdmin on c.admin_ID = uAdmin.ID
+        join users uAdmin on c.teacher_id = uAdmin.ID
         WHERE cs.student_id = ?";
 
 $stmt = $conn->prepare($sql);
@@ -118,28 +112,33 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 <!-- Navbar -->
 <nav class="navbar navbar-expand-lg bg-body-tertiary">
     <div class="container-fluid">
-        <a class="navbar-brand" href="#">Perksway</a>
+        <a class="navbar-brand" href="student.php">Perksway</a>
         <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
             <span class="navbar-toggler-icon"></span>
         </button>
         <div class="collapse navbar-collapse justify-content-center" id="navbarNav">
             <ul class="navbar-nav">
-                <li class="nav-item"><a class="nav-link active" href="#">Dashboard</a></li>
+                <li class="nav-item"><a class="nav-link active" href="student.php">Dashboard</a></li>
                 <li class="nav-item"><a class="nav-link" href="#">Bit Bazaar</a></li>
                 <li class="nav-item"><a class="nav-link" href="#">Bit Fortune</a></li>
             </ul>
         </div>
-        <div class="d-flex gap-4"> 
+        <div class="d-flex align-items-center gap-3 ms-auto"> 
             <i class="fa-solid fa-wallet"></i>
             <i class="fa-solid fa-cart-shopping"></i>
-            <i class="fa-solid fa-user"></i>
+            <div class="dropstart">
+            <a class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fa-solid fa-user"></i>
+            </a>           
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="studentProfile.php">Profile</a></li>
+                <li><a class="dropdown-item" href="#">Transaction History</a></li>
+                <li><a class="dropdown-item" href="logout.php">Logout</a></li>
+            </ul>
+            </div>
         </div>
     </div>
 </nav>
-
-<div>
-
-</div>
 
 <div class="container mt-5">
     <?php if ($result->num_rows === 0): ?>
@@ -215,10 +214,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                                 if (!empty($search)) {
                                     $students_sql = "SELECT u.email FROM class_students cs
                                                     JOIN users u ON cs.student_id = u.id
-                                                    WHERE cs.class_id = ? AND (u.name LIKE ? OR u.email LIKE ?)";
+                                                    WHERE cs.class_id = ? AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
                                     $searchParam = "%$search%";
                                     $stmt_students = $conn->prepare($students_sql);
-                                    $stmt_students->bind_param("iss", $class_id, $searchParam, $searchParam);
+                                    $stmt_students->bind_param("isss", $class_id, $searchParam, $searchParam, $searchParam);
                                 } else {
                                     $students_sql = "SELECT u.email FROM class_students cs
                                                     JOIN users u ON cs.student_id = u.id
@@ -244,19 +243,155 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 
                     <!-- Guilds Tab -->
                     <div id="guilds-<?php echo $row['class_id']; ?>" class="tab-pane fade">
-                        <div class="w-50 p-3">
+                        <div class="w-25 p-3">
                             <input class="form-control me-2" type="search" placeholder="Search Guilds" aria-label="Search" name="searchGuilds">
                         </div>
-                        <p>No guilds have been created yet.</p>
-                        <button class="btn btn-primary">Create Guild</button>
+                        <?php
+                            $class_id = $row['class_id'];
+                            $student_id = $user_id; //$_SESSION['user_id']; -- CHANGE IN MASTER
+
+                            // Check if the student has already joined a group
+                            $joined_guild = null;
+                            $guild_sql = "SELECT guild_id FROM student_guilds WHERE student_id = ?";
+                            $stmt_guild = $conn->prepare($guild_sql); // Use $guild_sql here
+                            if (!$stmt_guild) {
+                                die("Error preparing statement: " . $conn->error);
+                            }
+                            $stmt_guild->bind_param("i", $student_id);
+                            $stmt_guild->execute();
+                            $stmt_guild->bind_result($guild_id);
+                            $stmt_guild->fetch();
+                            $stmt_guild->close();
+
+                            if ($guild_id) {
+                                $joined_guild = $guild_id; // Student has already joined a group
+                            }
+
+                            // Fetch all guilds for the class
+                            $guild_sql = "SELECT guild_id, guild_name FROM guilds WHERE class_id = ?";
+                            $stmt_guilds = $conn->prepare($guild_sql);
+                            if (!$stmt_guilds) {
+                                die("Error preparing statement: " . $conn->error);
+                            }
+                            $stmt_guilds->bind_param("i", $class_id); 
+                            $stmt_guilds->execute();
+                            $result_guilds = $stmt_guilds->get_result(); 
+                            $guilds = [];
+                            while ($guild_row = $result_guilds->fetch_assoc()) {
+                                $guilds[] = $guild_row;
+                            }
+                            $stmt_guilds->close();
+                        ?>
+                        <div class="guild-container d-flex flex-row flex-wrap">
+                        <?php foreach ($guilds as $guild): ?>
+                            <div class="guild-card">
+                                <div class="ms-5 mt-3 card group-card <?php echo ($joined_guild && $joined_guild != $guild['guild_id']) ? 'disabled' : ''; ?>">
+                                    <div class="card-body">
+                                    <h5 class="card-title">
+                                        <a href="#" 
+                                        data-bs-toggle="modal" 
+                                        data-bs-target="#guildMembersModal-<?php echo $guild['guild_id']; ?>">
+                                            <?php echo htmlspecialchars($guild['guild_name']); ?>
+                                        </a>
+                                    </h5>
+                                        <!-- If the student hasn't joined any group, show the join button -->
+                                        <?php if (!$joined_guild): ?>
+                                            <form action="join_guild.php" method="POST">
+                                                <input type="hidden" name="student_id" value="<?php echo $student_id; ?>">
+                                                <input type="hidden" name="class_id" value="<?php echo $class_id; ?>">
+                                                <input type="hidden" name="guild_id" value="<?php echo $guild['guild_id']; ?>">
+                                                <button type="submit" class="mt-2 h-50 btn btn-primary">Join Group</button>
+                                            </form>
+                                        <?php elseif ($joined_guild == $guild['guild_id']): ?>
+                                            <p class="text-success">You have joined this group.</p>
+                                        <?php else: ?>
+                                            <p class="text-muted">You cannot join this group.</p>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
+
+                    <!-- Guild Members Modal -->
+                    <?php foreach ($guilds as $guild): ?>
+                        <!-- Modal for this specific guild -->
+                        <div class="modal fade" id="guildMembersModal-<?php echo $guild['guild_id']; ?>" tabindex="-1" aria-labelledby="guildModalLabel-<?php echo $guild['guild_id']; ?>" aria-hidden="true">
+                            <div class="modal-dialog">
+                                <div class="modal-content">
+                                    <div class="modal-header">
+                                        <h5 class="modal-title" id="guildModalLabel-<?php echo $guild['guild_id']; ?>">
+                                            Members of <?php echo htmlspecialchars($guild['guild_name']); ?>
+                                        </h5>
+                                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                    </div>
+                                    <div class="modal-body">
+                                        <ul class="list-group">
+                                            <?php
+                                            $guild_id = $guild['guild_id'];
+
+                                            $sql = "SELECT CONCAT(uStudent.First_Name, ' ', uStudent.Last_Name) as Name FROM student_guilds sg
+                                                    JOIN users uStudent ON sg.student_id = uStudent.ID
+                                                    WHERE sg.guild_id = ?";
+                                            $stmt = $conn->prepare($sql);
+                                            $stmt->bind_param("i", $guild_id);
+                                            $stmt->execute();
+                                            $result = $stmt->get_result();
+
+                                            if ($result->num_rows > 0) {
+                                                while ($row = $result->fetch_assoc()) {
+                                                    echo "<li class='list-group-item'>" . htmlspecialchars($row['Name']) . "</li>";
+                                                }
+                                            } else {
+                                                echo "<li class='list-group-item text-muted'>No members found.</li>";
+                                            }
+
+                                            $stmt->close();
+                                            ?>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+
+
+
 
                     <!-- Bit Bazaar Tab -->
                     <div id="bitbazaar-<?php echo $row['class_id']; ?>" class="tab-pane fade">
                         <div class="w-50 p-3">
                             <input class="form-control me-2" type="search" placeholder="Search Bazaar" aria-label="Search" name="searchBazaar">
                         </div>
-                        <p>Marketplace for class items.</p>
+                        <?php
+                        // Fetch all rewards from the database
+                            $sql = "SELECT name, description, price FROM rewards";
+                            $result = $conn->query($sql);
+                            $rewards = [];
+                            while ($row = $result->fetch_assoc()) {
+                                $rewards[] = $row;
+                            }
+                        ?>
+
+                        <div class="container mt-5">
+                                <h2>Rewards</h2>
+                                <div class="row" id="rewards-container">
+                                    <?php foreach ($rewards as $reward): ?>
+                                        <div class="col-md-4 mb-4">
+                                            <div class="reward-card">
+                                                <h5><?php echo htmlspecialchars($reward['name']); ?></h5>
+                                                <p><?php echo htmlspecialchars($reward['description']); ?></p>
+                                                <p><strong>Price:</strong> $<?php echo htmlspecialchars($reward['price']); ?></p>
+                                                <div class="input-group">
+                                                    <input type="number" class="form-control quantity" value="1" min="1" max="5">
+                                                    <button class="btn btn-success add-to-cart-btn" data-reward-id="<?php echo $reward['id']; ?>">Add to Cart</button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                            </div>
+
                     </div>
                 </div>
             </div>
@@ -269,12 +404,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 <footer class="p-3">
     <p>Perksway</p>
     <ul class="footerList">
-        <li><a href="#">Dashboard</a></li>
+        <li><a href="student.php">Dashboard</a></li>
         <li><a href="#">Bit Bazaar</a></li>
         <li><a href="#">Bit Fortune</a></li>
-        <li><a href="#">Logout</a></li>
+        <li><a href="logout.php">Logout</a></li>
     </ul>
 </footer>
+
 
 </body>
 </html>
