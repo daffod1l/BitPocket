@@ -12,13 +12,17 @@
     $sql = "SELECT 
     CONCAT(uStudent.first_name, ' ', uStudent.last_name) AS student_name,
     c.id AS class_id,
-    c.name AS class_name
+    c.name AS class_name,
+    CONCAT(uAdmin.first_name, ' ', uAdmin.last_name) AS prof_name
     FROM 
         users uStudent
     JOIN 
         class_students cs ON cs.Student_ID = uStudent.ID
     JOIN 
         classes c ON cs.Class_ID = c.id
+    join 
+    users uAdmin on c.teacher_id = uAdmin.ID
+    
     WHERE  uStudent.id = ?";
 
     $stmt = $conn->prepare($sql);
@@ -73,14 +77,38 @@
     </div>
 </nav>
 
-<?php echo htmlspecialchars($_SESSION['student_name'])?>
+
 
 <?php while ($row = $result->fetch_assoc()): ?>
-    <p>Enrolled Classes</p>
+
+    <div class="container mt-5 mb-5 w-50">
+        <div class="mb-5 text-center">
+            <?php echo '<h3>'. htmlspecialchars($row['student_name']) .'</h3>'?>
+        </div>
+        <div class="card">
+            <div class="card-header text-center">
+                <h4>Enrolled Classes</h4>
+            </div>
+            <div class="card-body text-center">
+                <table class="table table-hover">
+                    <tr>
+                        <th>Class Name</th>
+                        <th>Professor</th>
+                    </tr>
+                    <tr>
+                    <td> <?php echo htmlspecialchars($row["class_name"]); ?> </td>
+                    <td> <?php echo htmlspecialchars($row["prof_name"]); ?> </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+    </div>
+
+
 <?php endwhile; ?>
 
 <!--i would like to add 
-the users enrolled classes 
+the users enrolled classes --done
 guilds theyre apart if in each class
 previous 3 transactions
 -->

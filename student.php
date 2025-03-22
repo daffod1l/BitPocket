@@ -6,6 +6,9 @@
         header("Location: login.php");
         exit();
     }
+
+    $user_id = $_SESSION['user_id'];
+
 // Fetch enrolled classes
 $sql = "SELECT c.id AS class_id, c.name AS class_name, uStudent.last_name as student_name, uAdmin.last_name as admin_name,
         (SELECT COUNT(*) FROM class_students WHERE class_id = c.id) AS student_count
@@ -18,7 +21,19 @@ $sql = "SELECT c.id AS class_id, c.name AS class_name, uStudent.last_name as stu
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
-$result = $stmt->get_result();
+$stmt->bind_result($class_id, $class_name, $student_name, $admin_name, $student_count);
+
+$classes = [];
+while ($stmt->fetch()) {
+    $classes[] = [
+        'class_id' => $class_id,
+        'class_name' => $class_name,
+        'student_name' => $student_name,
+        'admin_name' => $admin_name,
+        'student_count' => $student_count
+    ];
+}
+
 
 // Handle class join request
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['joinClass'])) {
@@ -141,7 +156,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 </nav>
 
 <div class="container mt-5">
-    <?php if ($result->num_rows === 0): ?>
+    <?php 
+    $hasResults = count($classes); // Store result count in a variable
+    ?>
+    <?php if (!$hasResults): ?>
         <div class="container mt-5 mb-5 w-50">
             <div class="card">
                 <div class="card-body text-center">
@@ -156,7 +174,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
         </div>
     <?php endif; ?>
 
-    <?php while ($row = $result->fetch_assoc()): ?>
+    <?php foreach ($classes as $row): ?>
         <div class="card w-75 mx-auto mb-4">
             <div class="card-body">
                 <div class="card-header">
@@ -243,12 +261,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 
                     <!-- Guilds Tab -->
                     <div id="guilds-<?php echo $row['class_id']; ?>" class="tab-pane fade">
-                        <div class="w-25 p-3">
+                        <form method="POST" class="w-50 p-3 d-flex justify-content-between">
                             <input class="form-control me-2" type="search" placeholder="Search Guilds" aria-label="Search" name="searchGuilds">
-                        </div>
+                            <button type="submit" name="studentSearch" class="btn btn-secondary">Search</button>
+                            </form>
                         <?php
                             $class_id = $row['class_id'];
-                            $student_id = $user_id; //$_SESSION['user_id']; -- CHANGE IN MASTER
+                            $student_id = $_SESSION['user_id'];
 
                             // Check if the student has already joined a group
                             $joined_guild = null;
@@ -268,7 +287,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                             }
 
                             // Fetch all guilds for the class
-                            $guild_sql = "SELECT guild_id, guild_name FROM guilds WHERE class_id = ?";
+                            $guild_sql = "SELECT id, name FROM guilds WHERE class_id = ?";
                             $stmt_guilds = $conn->prepare($guild_sql);
                             if (!$stmt_guilds) {
                                 die("Error preparing statement: " . $conn->error);
@@ -397,7 +416,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
             </div>
         </div>
 
-    <?php endwhile; ?>
+    <?php endforeach; ?>
 </div>
 
 
