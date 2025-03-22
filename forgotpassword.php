@@ -2,6 +2,15 @@
 session_start();
 require_once 'db.php';
 
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['email'])) {
+    $email = trim($_POST['email']);
+
+    $conn = new mysqli('localhost', 'root', '', 'prizeversity_db');
+    if ($conn->connect_error) {
+        die("Connection failed: " . $conn->connect_error);
+    }
+
     
     $sql = "SELECT id, security_question, security_answer FROM users WHERE email = ?";
     $stmt = $conn->prepare($sql);
@@ -23,8 +32,12 @@ require_once 'db.php';
 
     } 
     else {
-        echo "<script>alert('Email not found.')</script>";
+        echo "Email not found.";
     }
+
+    $stmt->close();
+    $conn->close();
+}
 ?>
 
 
