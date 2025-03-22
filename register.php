@@ -27,10 +27,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 }
     
     if ($password !== $confirm_password) {
-         echo "<script>alert('Passwords do not match!'); window.location.href = 'register.php';</script>";
+        $errorMessage = "Passwords do not match!";
     } 
     else {
-        $passwordRegex = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_])[A-Za-z\d\W_]{8,}$/';
+        $passwordRegex = '/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/';
         
         if (!preg_match($passwordRegex, $password)) {
             $errorMessage = "Password must be at least 8 characters long, contain one uppercase letter, one lowercase letter, one number, and one special character.";
