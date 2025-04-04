@@ -11,12 +11,12 @@
 
 // Fetch enrolled classes
 $sql = "SELECT c.id AS class_id, c.name AS class_name, uStudent.last_name as student_name, uAdmin.last_name as admin_name,
-        (SELECT COUNT(*) FROM class_students WHERE class_id = c.id) AS student_count
+        (SELECT COUNT(*) FROM class_members WHERE class_id = c.id) AS student_count
         from classes c
-        join class_students cs on cs.Class_ID = c.id
-        join users uStudent on cs.Student_ID = uStudent.ID
+        join class_members cs on cs.Class_ID = c.id
+        join users uStudent on cs.user_ID = uStudent.ID
         join users uAdmin on c.teacher_id = uAdmin.ID
-        WHERE cs.student_id = ?";
+        WHERE cs.user_id = ?";
 
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $user_id);
@@ -40,7 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['joinClass'])) {
     $classCode = trim($_POST['classCode']);
     
     // Check if class exists
-    $stmt_check = $conn->prepare("SELECT id FROM classes WHERE name = ?");
+    $stmt_check = $conn->prepare("SELECT id FROM classes WHERE invite_hash = ?");
     $stmt_check->bind_param("s", $classCode);
     $stmt_check->execute();
     $stmt_check->store_result();
@@ -50,14 +50,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['joinClass'])) {
         $stmt_check->fetch();
         
         // Check if user is already enrolled
-        $stmt_check_enrollment = $conn->prepare("SELECT * FROM class_students WHERE class_id = ? AND student_id = ?");
+        $stmt_check_enrollment = $conn->prepare("SELECT * FROM class_members WHERE class_id = ? AND user_id = ?;");
         $stmt_check_enrollment->bind_param("ii", $class_id, $user_id);
         $stmt_check_enrollment->execute();
         $stmt_check_enrollment->store_result();
         
         if ($stmt_check_enrollment->num_rows == 0) {
             // Enroll user in the class
-            $stmt_insert = $conn->prepare("INSERT INTO class_students (class_id, student_id) VALUES (?, ?)");
+            $stmt_insert = $conn->prepare("INSERT INTO class_members (class_id, user_id) VALUES (?, ?)");
             $stmt_insert->bind_param("ii", $class_id, $user_id);
             $stmt_insert->execute();
             echo "<script>alert('Successfully joined $classCode'); window.location.href = window.location.href;</script>";
@@ -69,9 +69,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['joinClass'])) {
     }
 }
 
+//Leave class button
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 
-    $classCode = trim($_POST['classCode']);
+    $classCode = intval($_POST['class_id']);
 
     // Retrieve class ID using class name
     $stmt_check = $conn->prepare("SELECT id FROM classes WHERE name = ?");
@@ -80,19 +81,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
     $stmt_check->store_result();
 
     if ($stmt_check->num_rows > 0) {
-        $stmt_check->bind_result($leaveClassID);
+        $stmt_check->bind_result($classCode);
         $stmt_check->fetch();
 
         // Check if user is enrolled
-        $stmt_check_enrollment = $conn->prepare("SELECT * FROM class_students WHERE class_id = ? AND student_id = ?");
+        $stmt_check_enrollment = $conn->prepare("SELECT * FROM class_members WHERE class_id = ? AND user_id = ?");
         $stmt_check_enrollment->bind_param("ii", $leaveClassID, $user_id);
         $stmt_check_enrollment->execute();
         $stmt_check_enrollment->store_result();
 
         if ($stmt_check_enrollment->num_rows == 1) {
             // Delete user from class
-            $stmt_delete = $conn->prepare("DELETE FROM class_students WHERE class_id = ? AND student_id = ?");
-            $stmt_delete->bind_param("ii", $leaveClassID, $user_id);
+            $stmt_delete = $conn->prepare("DELETE FROM class_members WHERE class_id = ? AND user_id = ?");
+            $stmt_delete->bind_param("ii", $classCode, $user_id);
 
             if ($stmt_delete->execute()) {
                 echo "<script>alert('You have left $classCode'); window.location.href = window.location.href;</script>";
@@ -140,7 +141,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
         </div>
         <div class="d-flex align-items-center gap-3 ms-auto"> 
             <i class="fa-solid fa-wallet"></i>
-            <i class="fa-solid fa-cart-shopping"></i>
+            <a href="cart.php" type="button">
+                <i class="fa-solid fa-cart-shopping"></i>
+            </a>
             <div class="dropstart">
             <a class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fa-solid fa-user"></i>
@@ -157,7 +160,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 
 <div class="container mt-5">
     <?php 
-    $hasResults = count($classes); // Store result count in a variable
+        $hasResults = count($classes); // Store result count in a variable
     ?>
     <?php if (!$hasResults): ?>
         <div class="container mt-5 mb-5 w-50">
@@ -191,6 +194,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                         </script>
 
                     <form id="leaveForm-<?php echo $row['class_name']; ?>" method="POST">
+                        <input type="hidden" name="classID" value="<?php echo htmlspecialchars($row['class_id']); ?>">
                         <input type="hidden" name="classCode" value="<?php echo htmlspecialchars($row['class_name']); ?>">
                         <button type="button" class="btn btn-danger" name="leaveClass"
                             onclick="confirmLeave('<?php echo htmlspecialchars($row['class_name']); ?>', 'leaveForm-<?php echo $row['class_name']; ?>')">
@@ -199,9 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                     </form>
                     </div>
                 </div>
-            </div>
-
-            <div class="card-body">
+                <div class="card-body">
                 <h5 class="card-title">Join a new class</h5>
                 <form method="POST" class="w-25 p-3">
                     <input class="form-control" type="text" placeholder="Enter Class Code" name="classCode" required>
@@ -213,8 +215,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#guilds-<?php echo $row['class_id']; ?>">Guilds</a></li>
                     <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#bitbazaar-<?php echo $row['class_id']; ?>">Bit Bazaar</a></li>
                 </ul>
+                </div> <!-- for the card body-->
+
 
                 <div class="tab-content mt-3">
+
                     <!-- Students Tab -->
                     <div id="students-<?php echo $row['class_id']; ?>" class="tab-pane fade show active">
                         <form method="POST" class="w-50 p-3 d-flex justify-content-between">
@@ -226,19 +231,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                             <div class="row">
                                 <?php
                                 $class_id = $row['class_id'];
-                                $search = isset($_POST['searchStudents']) ? trim($_POST['searchStudents']) : '';
+                                $searchStudents = isset($_POST['searchStudents']) ? trim($_POST['searchStudents']) : '';
 
                                 // Use prepared statement to prevent SQL injection
-                                if (!empty($search)) {
-                                    $students_sql = "SELECT u.email FROM class_students cs
-                                                    JOIN users u ON cs.student_id = u.id
+                                if (!empty($searchStudents)) {
+                                    $students_sql = "SELECT u.email as email FROM class_members cs
+                                                    JOIN users u ON cs.user_id = u.id
                                                     WHERE cs.class_id = ? AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
-                                    $searchParam = "%$search%";
+                                    $searchParam = "%$searchStudents%";
                                     $stmt_students = $conn->prepare($students_sql);
                                     $stmt_students->bind_param("isss", $class_id, $searchParam, $searchParam, $searchParam);
                                 } else {
-                                    $students_sql = "SELECT u.email FROM class_students cs
-                                                    JOIN users u ON cs.student_id = u.id
+                                    $students_sql = "SELECT u.email FROM class_members cs
+                                                    JOIN users u ON cs.user_id = u.id
                                                     WHERE cs.class_id = ?";
                                     $stmt_students = $conn->prepare($students_sql);
                                     $stmt_students->bind_param("i", $class_id);
@@ -261,17 +266,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 
                     <!-- Guilds Tab -->
                     <div id="guilds-<?php echo $row['class_id']; ?>" class="tab-pane fade">
-                        <form method="POST" class="w-50 p-3 d-flex justify-content-between">
-                            <input class="form-control me-2" type="search" placeholder="Search Guilds" aria-label="Search" name="searchGuilds">
-                            <button type="submit" name="studentSearch" class="btn btn-secondary">Search</button>
-                            </form>
                         <?php
                             $class_id = $row['class_id'];
                             $student_id = $_SESSION['user_id'];
 
                             // Check if the student has already joined a group
                             $joined_guild = null;
-                            $guild_sql = "SELECT guild_id FROM student_guilds WHERE student_id = ?";
+                            $guild_sql = "SELECT group_id FROM group_members WHERE user_id = ?";
                             $stmt_guild = $conn->prepare($guild_sql); // Use $guild_sql here
                             if (!$stmt_guild) {
                                 die("Error preparing statement: " . $conn->error);
@@ -286,20 +287,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                                 $joined_guild = $guild_id; // Student has already joined a group
                             }
 
-                            // Fetch all guilds for the class
-                            $guild_sql = "SELECT id, name FROM guilds WHERE class_id = ?";
-                            $stmt_guilds = $conn->prepare($guild_sql);
-                            if (!$stmt_guilds) {
-                                die("Error preparing statement: " . $conn->error);
-                            }
-                            $stmt_guilds->bind_param("i", $class_id); 
-                            $stmt_guilds->execute();
-                            $result_guilds = $stmt_guilds->get_result(); 
                             $guilds = [];
+
+                            $guild_sql = "SELECT id as guild_id, name as guild_name FROM group_sets WHERE class_id = ?";
+                            $stmt_guilds = $conn->prepare($guild_sql);
+                            $stmt_guilds->bind_param("i", $class_id);
+                            $stmt_guilds->execute();
+                                
+                            $result_guilds = $stmt_guilds->get_result();
                             while ($guild_row = $result_guilds->fetch_assoc()) {
                                 $guilds[] = $guild_row;
                             }
                             $stmt_guilds->close();
+
                         ?>
                         <div class="guild-container d-flex flex-row flex-wrap">
                         <?php foreach ($guilds as $guild): ?>
@@ -331,6 +331,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                             </div>
                         <?php endforeach; ?>
                     </div>
+                    </div>
 
                     <!-- Guild Members Modal -->
                     <?php foreach ($guilds as $guild): ?>
@@ -349,23 +350,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                                             <?php
                                             $guild_id = $guild['guild_id'];
 
-                                            $sql = "SELECT CONCAT(uStudent.First_Name, ' ', uStudent.Last_Name) as Name FROM student_guilds sg
-                                                    JOIN users uStudent ON sg.student_id = uStudent.ID
-                                                    WHERE sg.guild_id = ?";
-                                            $stmt = $conn->prepare($sql);
-                                            $stmt->bind_param("i", $guild_id);
-                                            $stmt->execute();
-                                            $result = $stmt->get_result();
+                                            $memberList_sql = "SELECT CONCAT(uStudent.first_name,' ', uStudent.last_name) as Name FROM group_members gm
+                                                                JOIN users uStudent ON gm.user_id = uStudent.ID
+                                                                WHERE gm.group_id = ?";
+                                            $memberList_stmt = $conn->prepare($memberList_sql);
+                                            $memberList_stmt->bind_param("i", $guild_id);
+                                            $memberList_stmt->execute();
+                                            $memberList_result = $memberList_stmt->get_result();
 
-                                            if ($result->num_rows > 0) {
-                                                while ($row = $result->fetch_assoc()) {
-                                                    echo "<li class='list-group-item'>" . htmlspecialchars($row['Name']) . "</li>";
+                                            if ($memberList_result->num_rows > 0) {
+                                                while ($member = $memberList_result->fetch_assoc()) {
+                                                    echo "<li class='list-group-item'>" . htmlspecialchars($member['Name']) . "</li>";
                                                 }
                                             } else {
                                                 echo "<li class='list-group-item text-muted'>No members found.</li>";
                                             }
-
-                                            $stmt->close();
                                             ?>
                                         </ul>
                                     </div>
@@ -374,50 +373,59 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
                         </div>
                     <?php endforeach; ?>
 
-
-
-
                     <!-- Bit Bazaar Tab -->
                     <div id="bitbazaar-<?php echo $row['class_id']; ?>" class="tab-pane fade">
-                        <div class="w-50 p-3">
-                            <input class="form-control me-2" type="search" placeholder="Search Bazaar" aria-label="Search" name="searchBazaar">
-                        </div>
-                        <?php
-                        // Fetch all rewards from the database
-                            $sql = "SELECT name, description, price FROM rewards";
-                            $result = $conn->query($sql);
-                            $rewards = [];
-                            while ($row = $result->fetch_assoc()) {
-                                $rewards[] = $row;
-                            }
-                        ?>
+                            <?php
+                            // Prepare SQL Query
+                                $bazaar_sql = "SELECT id, name, description, cost FROM rewards";
+                                $bazaar = $conn->prepare($bazaar_sql);
 
-                        <div class="container mt-5">
-                                <h2>Rewards</h2>
-                                <div class="row" id="rewards-container">
-                                    <?php foreach ($rewards as $reward): ?>
-                                        <div class="col-md-4 mb-4">
-                                            <div class="reward-card">
-                                                <h5><?php echo htmlspecialchars($reward['name']); ?></h5>
-                                                <p><?php echo htmlspecialchars($reward['description']); ?></p>
-                                                <p><strong>Price:</strong> $<?php echo htmlspecialchars($reward['price']); ?></p>
-                                                <div class="input-group">
-                                                    <input type="number" class="form-control quantity" value="1" min="1" max="5">
-                                                    <button class="btn btn-success add-to-cart-btn" data-reward-id="<?php echo $reward['id']; ?>">Add to Cart</button>
+                                $bazaar->execute(); 
+                                $bazaar_result = $bazaar->get_result();
+
+                                // Fetch Rewards
+                                $rewards = [];
+                                if ($bazaar_result->num_rows > 0) {
+                                    while ($reward = $bazaar_result->fetch_assoc()) {
+                                        $rewards[] = $reward;
+                                        }
+                                    }
+                                else {
+                                        echo "<div class='col-md-12 text-center text-muted'>No rewards found.</div>";
+                                    }
+
+                            ?>
+
+                            <div class="bitbazaar-container d-flex flex-row flex-wrap">
+                                    <div class="row" id="rewards-container">
+                                        <?php foreach ($rewards as $reward): ?>
+                                            <div class="col-md-4 mb-4">
+                                            <form method="post" action="add_to_cart.php?id=<?= $reward['id'] ?>">
+                                                <input type="hidden" name="name" value="<?= htmlspecialchars($reward['name']) ?>">
+                                                <input type="hidden" name="price" value="<?= htmlspecialchars($reward['cost']) ?>">
+                                                <input type="hidden" name="class_name" value="<?= $row['class_name'] ?>">
+                                                <div class="reward-card">
+                                                    <h5><?= htmlspecialchars($reward['name']) ?></h5>
+                                                    <p><?= htmlspecialchars($reward['description']) ?></p>
+                                                    <p><strong>Price:</strong> $<?= htmlspecialchars($reward['cost']) ?></p>
+                                                    <div class="input-group">
+                                                        <input type="number" class="form-control quantity" name="quantity" value="1" min="1" max="5">
+                                                        <button type="submit" name="add_to_cart" class="btn btn-primary">Add to Cart</button>
+                                                    </div>
                                                 </div>
+                                            </form>
                                             </div>
-                                        </div>
-                                    <?php endforeach; ?>
-                                </div>
-                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                            </div> <!-- end of bazaar-->
+                        </div> <!-- for the bit bazaar tab-->
 
-                    </div>
-                </div>
-            </div>
-        </div>
+            </div> <!-- for the tab content-->
+        </div> <!-- for the 2nd card body-->
+        </div> <!-- for the card-->    
+        <?php endforeach; ?>
+    </div> <!-- for the container-->
 
-    <?php endforeach; ?>
-</div>
 
 
 <footer class="p-3">

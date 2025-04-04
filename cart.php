@@ -1,36 +1,18 @@
 <?php
-    session_start();
-    require_once 'db.php';
+session_start();
 
-    if (!isset($_SESSION['user_id'])) {
-        header("Location: login.php");
-        exit();
+// Handle remove
+if (isset($_GET['action']) && $_GET['action'] === "remove" && isset($_GET['id']) && isset($_SESSION['cart'])) {
+    foreach ($_SESSION['cart'] as $key => $value) {
+        if ($value['id'] == $_GET['id']) {
+            unset($_SESSION['cart'][$key]);
+            $_SESSION['cart'] = array_values($_SESSION['cart']); // Reindex
+            break;
+        }
     }
+}
 
-    $student_id = $_SESSION['user_id'];
-
-    $sql = "SELECT 
-    CONCAT(uStudent.first_name, ' ', uStudent.last_name) AS student_name,
-    c.id AS class_id,
-    c.name AS class_name,
-    CONCAT(uAdmin.first_name, ' ', uAdmin.last_name) AS prof_name,
-    cast(cs.joined_at as date) as dateJoined
-    FROM 
-        users uStudent
-    JOIN 
-        class_members cs ON cs.user_ID = uStudent.ID
-    JOIN 
-        classes c ON cs.Class_ID = c.id
-    join 
-    users uAdmin on c.teacher_id = uAdmin.ID
-    
-    WHERE  uStudent.id = ?";
-
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param("i", $student_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-
+$total = 0;
 ?>
 
 <!doctype html>
@@ -63,7 +45,9 @@
         </div>
         <div class="d-flex align-items-center gap-3 ms-auto"> 
             <i class="fa-solid fa-wallet"></i>
-            <i class="fa-solid fa-cart-shopping"></i>
+            <a href="cart.php" type="button">
+                <i class="fa-solid fa-cart-shopping"></i>
+            </a>
             <div class="dropstart">
             <a class="btn dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fa-solid fa-user"></i>
@@ -78,46 +62,43 @@
     </div>
 </nav>
 
+<body class="bg-light">
+    <div class="container my-5">
+        <h2 class="mb-4">Your Cart</h2>
 
+        <?php if (!empty($_SESSION['cart'])): ?>
+            <div class="row">
+                <?php foreach ($_SESSION['cart'] as $item): ?>
+                    <?php
+                        $item_total = $item['price'] * $item['quantity'];
+                        $total += $item_total;
+                    ?>
+                    <div class="col-md-6 mb-4">
+                        <div class="card shadow-sm rounded p-3">
+                            <h5 class="fw-bold"><?= htmlspecialchars($item['name']) ?></h5>
+                            <p class="mb-1 text-muted">Class: <?= htmlspecialchars($item['class_name']) ?></p>
+                            <p class="mb-1">Quantity: <?= htmlspecialchars($item['quantity']) ?></p>
+                            <p class="mb-1">Price per item: $<?= number_format($item['price'], 2) ?></p>
+                            <p class="fw-semibold">Subtotal: $<?= number_format($item_total, 2) ?></p>
 
-<?php while ($row = $result->fetch_assoc()): ?>
-
-    <div class="container mt-5 mb-5 w-50">
-        <div class="mb-5 text-center">
-            <?php echo '<h3>'. htmlspecialchars($row['student_name']) .'</h3>'?>
-        </div>
-        <div class="card">
-            <div class="card-header text-center">
-                <h4>Enrolled Classes</h4>
+                            <a href="cart.php?action=remove&id=<?= $item['id'] ?>" class="btn btn-danger btn-sm mt-2">Remove</a>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
             </div>
-            <div class="card-body text-center">
-                <table class="table table-hover">
-                    <tr>
-                        <th>Class Name</th>
-                        <th>Professor</th>
-                        <th>Enrolled Date</th>
-                    </tr>
-                    <tr>
-                    <td> <?php echo htmlspecialchars($row["class_name"]); ?> </td>
-                    <td> <?php echo htmlspecialchars($row["prof_name"]); ?> </td>
-                    <td> <?php echo htmlspecialchars($row["dateJoined"]); ?> </td>
-                    </tr>
-                </table>
+
+            <div class="text-end mt-4">
+                <h4>Total: $<?= number_format($total, 2) ?></h4>
+                <a href="checkout.php" class="btn btn-success mt-2">Checkout</a>
             </div>
-        </div>
+        <?php else: ?>
+            <div class="alert alert-info">
+                Your cart is empty.
+            </div>
+        <?php endif; ?>
     </div>
 
-
-<?php endwhile; ?>
-
-<!--i would like to add 
-how many bits the user has - their wallet
-the users enrolled classes --done
-guilds theyre apart if in each class
-previous 3 transactions
--->
-
-<footer class="p-3">
+    <footer class="p-3">
     <p>Perksway</p>
     <ul class="footerList">
         <li><a href="student.php">Dashboard</a></li>
