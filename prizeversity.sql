@@ -203,6 +203,7 @@ CREATE TABLE `users` (
   `school_name` varchar(255) NOT NULL,
   `security_question` varchar(255) NOT NULL,
   `security_answer` varchar(255) NOT NULL,
+  `bits_balance` INT NOT NULL DEFAULT 0, 
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
