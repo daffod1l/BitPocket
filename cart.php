@@ -104,6 +104,8 @@ $total = 0;
         <li><a href="student.php">Dashboard</a></li>
         <li><a href="#">Bit Bazaar</a></li>
         <li><a href="#">Bit Fortune</a></li>
+        <li><a href="checkout.php">Checkout</a></li>
+        <li><a href="transaction_history.php">Transaction History</a></li>
         <li><a href="logout.php">Logout</a></li>
     </ul>
 </footer>
