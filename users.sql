@@ -7,6 +7,7 @@ CREATE TABLE users (
     role ENUM('Teacher', 'Student') NOT NULL,      
     school_name VARCHAR(255) NOT NULL,             
     security_question VARCHAR(255) NOT NULL,       
-    security_answer VARCHAR(255) NOT NULL,         
+    security_answer VARCHAR(255) NOT NULL, 
+    bits_balance INT NOT NULL DEFAULT 0,   
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
