@@ -171,9 +171,12 @@ $numApprovals = $row ? $row['pending_approvals'] : 0;
     <section id="groups" class="section">
       <h2>Groups / Guilds</h2>
       <div class="form-container">
-        <h3>Create Group Set</h3>
+        <h3>Create Groups</h3>
         <form id="createGroupSetForm">
-          <label for="groupSetName">Group Set Name:</label>
+        <label for="classSelector">Select Class:</label>
+        <select id="classSelector" required></select>
+
+          <label for="groupSetName">Group Name:</label>
           <input type="text" id="groupSetName" name="groupSetName" required />
 
           <label>
@@ -195,12 +198,12 @@ $numApprovals = $row ? $row['pending_approvals'] : 0;
               Require Teacher Approval
             </label>
           </div>
-          <button type="submit">Create Group Set</button>
+          <button type="submit">Create Group</button>
         </form>
       </div>
 
       <div class="table-container">
-        <h3>Existing Group Sets</h3>
+        <h3>Existing Groups</h3>
         <table>
           <thead>
             <tr>
@@ -214,6 +217,18 @@ $numApprovals = $row ? $row['pending_approvals'] : 0;
           <!-- loaded in scripts -->
           </tbody>
         </table>
+      </div>
+      <div id="manageGroupModal" class="table-container manage-class-modal" style="display: none;">
+        <h3 id="manageGroupTitle">Manage Group</h3>
+        <button class="btn-close" onclick="closeManageGroup()">Close</button>
+        <div id="groupEnrolledSection" class="form-container">
+          <h4>Group Members</h4>
+          <ul id="groupEnrolledList"></ul>
+        </div>
+        <div id="groupAvailableSection" class="form-container">
+          <h4>Available Students</h4>
+          <ul id="groupAvailableList"></ul>
+        </div>
       </div>
     </section>
 

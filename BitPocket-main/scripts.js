@@ -37,6 +37,35 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  loadTeacherClassesForGroupSet();
+
+  let selectedClassId = null;
+
+  async function loadTeacherClassesForGroupSet() {
+    try {
+      const res = await fetch("classes.php");
+      const data = await res.json();
+      const classSelector = document.getElementById("classSelector");
+  
+      classSelector.innerHTML = '<option value="">Select a class...</option>';
+      data.forEach(cls => {
+        const option = document.createElement("option");
+        option.value = cls.id;
+        option.textContent = cls.name;
+        classSelector.appendChild(option);
+      });
+  
+      classSelector.addEventListener("change", (e) => {
+        selectedClassId = parseInt(e.target.value);
+      });
+  
+    } catch (err) {
+      console.error("Failed to load teacher's classes:", err);
+      alert("Could not load your class list.");
+    }
+  }
+  
+
   // classes
   const addClassForm = document.getElementById("addClassForm");
   addClassForm.addEventListener("submit", async (e) => {
@@ -88,7 +117,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const leaderApproval = document.getElementById("leaderApproval").checked;
       const teacherApproval = document.getElementById("teacherApproval").checked;
 
-      const classId = 1; // this is hardcoded as a fixed classId, eventually gonna change this to dynamic
+      const classId = selectedClassId; 
       try {
   
         const res = await fetch("group_sets.php", {
@@ -341,8 +370,8 @@ async function loadGroupSets() {
         <td>${allowSignup}</td>
         <td>${approvalStr}</td>
         <td>
-          <button onclick="manageGroupSet(${gs.id})">Manage</button>
-          <button onclick="deleteGroupSet(${gs.id})">Delete</button>
+          <button onclick="manageGroup(${gs.id})">Manage</button>
+          <button onclick="deleteGroup(${gs.id})">Delete</button>
         </td>
       `;
       tableBody.appendChild(row);
@@ -352,10 +381,10 @@ async function loadGroupSets() {
   }
 }
 
-async function deleteGroupSet(gsId) {
+async function deleteGroup(groupId) {
   if (!confirm("Are you sure you want to delete this group set?")) return;
   try {
-    const res = await fetch(`group_sets.php?id=${gsId}`, {
+    const res = await fetch(`group_sets.php?id=${groupId}`, {
       method: "DELETE"
     });
     const data = await res.json();
@@ -371,9 +400,89 @@ async function deleteGroupSet(gsId) {
   }
 }
 
-function manageGroupSet(gsId) {
-  // this is a placeholder for later
-  alert(`Here you would manage group set #${gsId}`);
+async function manageGroup(groupId) {
+  try {
+    const modal = document.getElementById("manageGroupModal");
+    const title = document.getElementById("manageGroupTitle");
+    const enrolledList = document.getElementById("groupEnrolledList");
+    const availableList = document.getElementById("groupAvailableList");
+
+    enrolledList.innerHTML = "";
+    availableList.innerHTML = "";
+
+    const res = await fetch(`group_members.php?group_id=${groupId}`);
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Failed to load group data.");
+      return;
+    }
+
+    (data.enrolled || []).forEach(student => {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        ${student.first_name} ${student.last_name} (ID: ${student.id})
+        <button onclick="removeStudentFromGroup(${groupId}, ${student.id})">Remove</button>
+      `;
+      enrolledList.appendChild(li);
+    });
+
+    (data.available || []).forEach(student => {
+      const li = document.createElement("li");
+      li.innerHTML = `
+        ${student.first_name} ${student.last_name} (ID: ${student.id})
+        <button onclick="addStudentToGroup(${groupId}, ${student.id})">Add</button>
+      `;
+      availableList.appendChild(li);
+    });
+
+    title.textContent = `Manage Group ID: ${groupId}`;
+    modal.style.display = "block";
+  } catch (err) {
+    console.error("Error managing group:", err);
+    alert("Failed to load group info.");
+  }
+}
+
+
+function closeManageGroup() {
+  document.getElementById("manageGroupModal").style.display = "none";
+}
+
+async function addStudentToGroup(groupId, userId) {
+  try {
+    const res = await fetch(`group_members.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ group_id: groupId, user_id: userId })
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      alert(data.error || "Failed to add student.");
+      return;
+    }
+
+    manageGroup(groupId); // Refresh
+  } catch (err) {
+    console.error("Error adding student to group:", err);
+  }
+}
+
+
+async function removeStudentFromGroup(groupId, userId) {
+  try {
+    const res = await fetch(`group_members.php?group_id=${groupId}&user_id=${userId}`, {
+      method: "DELETE"
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || "Failed to remove student.");
+      return;
+    }
+    manageGroupSet(groupSetId); // reload modal
+  } catch (err) {
+    console.error("Error removing student from group:", err);
+  }
 }
 
 // students

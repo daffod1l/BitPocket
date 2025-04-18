@@ -1,26 +1,33 @@
 <?php
-
 header('Content-Type: application/json');
-require_once 'db.php'; 
+session_start();
+require_once 'db.php';
 
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'Teacher') {
+    http_response_code(403);
+    echo json_encode(["error" => "Unauthorized"]);
+    exit();
+}
+
+$teacherId = $_SESSION['user_id'];
 $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
     case 'GET':
         if (isset($_GET['id'])) {
-            getGroupSetById($pdo, $_GET['id']);
+            getGroupSetById($conn, $_GET['id'], $teacherId);
         } else {
-            getAllGroupSets($pdo);
+            getAllGroupSets($conn, $teacherId);
         }
         break;
 
     case 'POST':
-        createGroupSet($pdo);
+        createGroupSet($conn, $teacherId);
         break;
 
     case 'PUT':
         if (isset($_GET['id'])) {
-            updateGroupSet($pdo, $_GET['id']);
+            updateGroupSet($conn, $_GET['id'], $teacherId);
         } else {
             http_response_code(400);
             echo json_encode(["error" => "Missing group set ID"]);
@@ -29,7 +36,7 @@ switch ($method) {
 
     case 'DELETE':
         if (isset($_GET['id'])) {
-            deleteGroupSet($pdo, $_GET['id']);
+            deleteGroupSet($conn, $_GET['id'], $teacherId);
         } else {
             http_response_code(400);
             echo json_encode(["error" => "Missing group set ID"]);
@@ -42,24 +49,27 @@ switch ($method) {
         break;
 }
 
-// Functions
-
-function getAllGroupSets($pdo) {
+// get all groups
+function getAllGroupSets($conn, $teacherId) {
     try {
-        $stmt = $pdo->query("SELECT * FROM group_sets ORDER BY id ASC");
-        $rows = $stmt->fetchAll();
-        echo json_encode($rows);
+        $stmt = $conn->prepare("SELECT gs.* FROM group_sets gs JOIN classes c ON gs.class_id = c.id WHERE c.teacher_id = ? ORDER BY gs.id ASC");
+        $stmt->bind_param("i", $teacherId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        echo json_encode($result->fetch_all(MYSQLI_ASSOC));
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(["error" => $e->getMessage()]);
     }
 }
 
-function getGroupSetById($pdo, $id) {
+function getGroupSetById($conn, $id, $teacherId) {
     try {
-        $stmt = $pdo->prepare("SELECT * FROM group_sets WHERE id = ?");
-        $stmt->execute([$id]);
-        $row = $stmt->fetch();
+        $stmt = $conn->prepare("SELECT gs.* FROM group_sets gs JOIN classes c ON gs.class_id = c.id WHERE gs.id = ? AND c.teacher_id = ?");
+        $stmt->bind_param("ii", $id, $teacherId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
         if ($row) {
             echo json_encode($row);
         } else {
@@ -72,107 +82,102 @@ function getGroupSetById($pdo, $id) {
     }
 }
 
-function createGroupSet($pdo) {
+function createGroupSet($conn, $teacherId) {
     $data = json_decode(file_get_contents("php://input"), true);
-    if (!$data || !isset($data['class_id']) || !isset($data['name'])) {
+
+    if (!$data || !isset($data['name']) || !isset($data['class_id'])) {
         http_response_code(400);
-        echo json_encode(["error" => "Missing required fields (class_id, name)"]);
+        echo json_encode(["error" => "Missing required fields"]);
         return;
     }
 
     $classId = $data['class_id'];
     $name = $data['name'];
-    $allowSelfSignup = isset($data['allow_self_signup']) ? (bool)$data['allow_self_signup'] : false;
-    $requireApproval = isset($data['require_approval']) ? (bool)$data['require_approval'] : false;
-    $teacherApproval = isset($data['require_teacher_approval']) ? (bool)$data['require_teacher_approval'] : false;
-    $leaderApproval = isset($data['require_leader_approval']) ? (bool)$data['require_leader_approval'] : false;
+    $allowSelfSignup = !empty($data['allow_self_signup']) ? 1 : 0;
+    $requireApproval = !empty($data['require_approval']) ? 1 : 0;
+    $teacherApproval = !empty($data['require_teacher_approval']) ? 1 : 0;
+    $leaderApproval = !empty($data['require_leader_approval']) ? 1 : 0;
+
+    $stmt = $conn->prepare("SELECT id FROM classes WHERE id = ? AND teacher_id = ?");
+    $stmt->bind_param("ii", $classId, $teacherId);
+    $stmt->execute();
+    $stmt->store_result();
+    if ($stmt->num_rows === 0) {
+        http_response_code(403);
+        echo json_encode(["error" => "Unauthorized to create group set in this class"]);
+        return;
+    }
 
     try {
-        $sql = "INSERT INTO group_sets
-                (class_id, name, allow_self_signup, require_approval, require_teacher_approval, require_leader_approval)
-                VALUES (?, ?, ?, ?, ?, ?)";
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute([$classId, $name, $allowSelfSignup, $requireApproval, $teacherApproval, $leaderApproval]);
-        $newId = $pdo->lastInsertId();
-
-        echo json_encode([
-            "id" => $newId,
-            "class_id" => $classId,
-            "name" => $name,
-            "allow_self_signup" => $allowSelfSignup,
-            "require_approval" => $requireApproval,
-            "require_teacher_approval" => $teacherApproval,
-            "require_leader_approval" => $leaderApproval
-        ]);
+        $stmt = $conn->prepare("INSERT INTO group_sets (class_id, name, allow_self_signup, require_approval, require_teacher_approval, require_leader_approval) VALUES (?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("isiiii", $classId, $name, $allowSelfSignup, $requireApproval, $teacherApproval, $leaderApproval);
+        $stmt->execute();
+        echo json_encode(["id" => $stmt->insert_id, "message" => "Group set created"]);
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(["error" => $e->getMessage()]);
     }
 }
 
-function updateGroupSet($pdo, $id) {
+function updateGroupSet($conn, $id, $teacherId) {
     $data = json_decode(file_get_contents("php://input"), true);
     if (!$data) {
         http_response_code(400);
-        echo json_encode(["error" => "No data to update"]);
+        echo json_encode(["error" => "No data provided"]);
+        return;
+    }
+
+    $stmt = $conn->prepare("SELECT gs.id FROM group_sets gs JOIN classes c ON gs.class_id = c.id WHERE gs.id = ? AND c.teacher_id = ?");
+    $stmt->bind_param("ii", $id, $teacherId);
+    $stmt->execute();
+    $stmt->store_result();
+    if ($stmt->num_rows === 0) {
+        http_response_code(403);
+        echo json_encode(["error" => "Unauthorized"]);
         return;
     }
 
     $fields = [];
+    $types = "";
     $values = [];
 
-    // If user passed in any of these fields, we'll update them
-    if (isset($data['class_id'])) {
-        $fields[] = "class_id = ?";
-        $values[] = $data['class_id'];
-    }
-    if (isset($data['name'])) {
-        $fields[] = "name = ?";
-        $values[] = $data['name'];
-    }
-    if (isset($data['allow_self_signup'])) {
-        $fields[] = "allow_self_signup = ?";
-        $values[] = (bool)$data['allow_self_signup'];
-    }
-    if (isset($data['require_approval'])) {
-        $fields[] = "require_approval = ?";
-        $values[] = (bool)$data['require_approval'];
-    }
-    if (isset($data['require_teacher_approval'])) {
-        $fields[] = "require_teacher_approval = ?";
-        $values[] = (bool)$data['require_teacher_approval'];
-    }
-    if (isset($data['require_leader_approval'])) {
-        $fields[] = "require_leader_approval = ?";
-        $values[] = (bool)$data['require_leader_approval'];
+    foreach (['class_id', 'name', 'allow_self_signup', 'require_approval', 'require_teacher_approval', 'require_leader_approval'] as $field) {
+        if (isset($data[$field])) {
+            $fields[] = "$field = ?";
+            $values[] = $data[$field];
+            $types .= is_int($data[$field]) ? "i" : "s";
+        }
     }
 
-    if (count($fields) === 0) {
+    if (empty($fields)) {
         http_response_code(400);
-        echo json_encode(["error" => "No valid fields provided"]);
+        echo json_encode(["error" => "No valid fields to update"]);
         return;
     }
 
     $sql = "UPDATE group_sets SET " . implode(", ", $fields) . " WHERE id = ?";
+    $types .= "i";
     $values[] = $id;
 
-    try {
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($values);
-        echo json_encode(["message" => "Group set updated"]);
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["error" => $e->getMessage()]);
-    }
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param($types, ...$values);
+    $stmt->execute();
+    echo json_encode(["message" => "Group set updated"]);
 }
 
-function deleteGroupSet($pdo, $id) {
-    try {
-        $stmt = $pdo->prepare("DELETE FROM group_sets WHERE id = ?");
-        $stmt->execute([$id]);
-        echo json_encode(["message" => "Group set deleted"]);
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["error" => $e->getMessage()]);
+function deleteGroupSet($conn, $id, $teacherId) {
+    $stmt = $conn->prepare("SELECT gs.id FROM group_sets gs JOIN classes c ON gs.class_id = c.id WHERE gs.id = ? AND c.teacher_id = ?");
+    $stmt->bind_param("ii", $id, $teacherId);
+    $stmt->execute();
+    $stmt->store_result();
+    if ($stmt->num_rows === 0) {
+        http_response_code(403);
+        echo json_encode(["error" => "Unauthorized"]);
+        return;
     }
+
+    $stmt = $conn->prepare("DELETE FROM group_sets WHERE id = ?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    echo json_encode(["message" => "Group set deleted"]);
 }
