@@ -1,22 +1,22 @@
 <?php
-
+ob_start();
 header('Content-Type: application/json');
-require_once 'db.php';
+require_once 'db.php'; 
 
 $method = $_SERVER['REQUEST_METHOD'];
 
 switch ($method) {
     case 'GET':
-        getGroupMembers($pdo);
+        getGroupMembers($conn);
         break;
 
     case 'POST':
-        createGroupMember($pdo);
+        createGroupMember($conn);
         break;
 
     case 'PUT':
         if (isset($_GET['user_id']) && isset($_GET['group_id'])) {
-            updateGroupMember($pdo, $_GET['user_id'], $_GET['group_id']);
+            updateGroupMember($conn, $_GET['user_id'], $_GET['group_id']);
         } else {
             http_response_code(400);
             echo json_encode(["error" => "Missing user_id and/or group_id"]);
@@ -25,7 +25,7 @@ switch ($method) {
 
     case 'DELETE':
         if (isset($_GET['user_id']) && isset($_GET['group_id'])) {
-            deleteGroupMember($pdo, $_GET['user_id'], $_GET['group_id']);
+            deleteGroupMember($conn, $_GET['user_id'], $_GET['group_id']);
         } else {
             http_response_code(400);
             echo json_encode(["error" => "Missing user_id and/or group_id"]);
@@ -38,38 +38,59 @@ switch ($method) {
         break;
 }
 
-// Functions
+function getGroupMembers($conn) {
+    if (isset($_GET['group_id'])) {
+        $groupId = $_GET['group_id'];
 
-function getGroupMembers($pdo) {
-    try {
-        if (isset($_GET['group_id'])) {
-            $groupId = $_GET['group_id'];
-            $stmt = $pdo->prepare("SELECT * FROM group_members WHERE group_id = ?");
-            $stmt->execute([$groupId]);
-            $rows = $stmt->fetchAll();
-            echo json_encode($rows);
+        // Get class_id based on group_id (group_sets.id)
+        $stmt = $conn->prepare("SELECT class_id FROM group_sets WHERE id = ?");
+        $stmt->bind_param("i", $groupId);
+        $stmt->execute();
+        $result = $stmt->get_result();
+        $row = $result->fetch_assoc();
+
+        if (!$row) {
+            http_response_code(404);
+            echo json_encode(["error" => "Group not found."]);
             return;
         }
 
-        if (isset($_GET['user_id'])) {
-            $userId = $_GET['user_id'];
-            $stmt = $pdo->prepare("SELECT * FROM group_members WHERE user_id = ?");
-            $stmt->execute([$userId]);
-            $rows = $stmt->fetchAll();
-            echo json_encode($rows);
-            return;
-        }
+        $classId = $row['class_id'];
 
-        $stmt = $pdo->query("SELECT * FROM group_members");
-        $rows = $stmt->fetchAll();
-        echo json_encode($rows);
-    } catch (Exception $e) {
-        http_response_code(500);
-        echo json_encode(["error" => $e->getMessage()]);
+        // Available students in class who are NOT in the group
+        $stmt = $conn->prepare("
+            SELECT u.id, u.first_name, u.last_name
+            FROM class_members cm
+            JOIN users u ON cm.user_id = u.id
+            WHERE cm.class_id = ?
+              AND u.id NOT IN (
+                  SELECT user_id FROM group_members WHERE group_id = ?
+              )
+        ");
+        $stmt->bind_param("ii", $classId, $groupId);
+        $stmt->execute();
+        $available = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+        // Students already in the group
+        $stmt = $conn->prepare("
+            SELECT u.id, u.first_name, u.last_name, gm.is_pending
+            FROM group_members gm
+            JOIN users u ON gm.user_id = u.id
+            WHERE gm.group_id = ?
+        ");
+        $stmt->bind_param("i", $groupId);
+        $stmt->execute();
+        $enrolled = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+        echo json_encode(["enrolled" => $enrolled, "available" => $available]);
+        return;
     }
+
+    http_response_code(400);
+    echo json_encode(["error" => "Missing group_id"]);
 }
 
-function createGroupMember($pdo) {
+function createGroupMember($conn) {
     $data = json_decode(file_get_contents("php://input"), true);
     if (!$data || !isset($data['user_id']) || !isset($data['group_id'])) {
         http_response_code(400);
@@ -79,11 +100,12 @@ function createGroupMember($pdo) {
 
     $userId = $data['user_id'];
     $groupId = $data['group_id'];
-    $isPending = isset($data['is_pending']) ? (bool)$data['is_pending'] : false;
+    $isPending = isset($data['is_pending']) ? (int)$data['is_pending'] : 0;
 
     try {
-        $stmt = $pdo->prepare("INSERT INTO group_members (user_id, group_id, is_pending) VALUES (?, ?, ?)");
-        $stmt->execute([$userId, $groupId, $isPending]);
+        $stmt = $conn->prepare("INSERT INTO group_members (user_id, group_id, is_pending) VALUES (?, ?, ?)");
+        $stmt->bind_param("iii", $userId, $groupId, $isPending);
+        $stmt->execute();
 
         echo json_encode([
             "user_id" => $userId,
@@ -96,36 +118,20 @@ function createGroupMember($pdo) {
     }
 }
 
-function updateGroupMember($pdo, $userId, $groupId) {
+function updateGroupMember($conn, $userId, $groupId) {
     $data = json_decode(file_get_contents("php://input"), true);
-    if (!$data) {
+    if (!$data || !isset($data['is_pending'])) {
         http_response_code(400);
-        echo json_encode(["error" => "No data to update"]);
+        echo json_encode(["error" => "Missing fields"]);
         return;
     }
 
-    $fields = [];
-    $values = [];
-
-    if (isset($data['is_pending'])) {
-        $fields[] = "is_pending = ?";
-        $values[] = (bool)$data['is_pending'];
-    }
-
-    if (count($fields) === 0) {
-        http_response_code(400);
-        echo json_encode(["error" => "No valid fields"]);
-        return;
-    }
-
-    $sql = "UPDATE group_members SET " . implode(", ", $fields) . " 
-            WHERE user_id = ? AND group_id = ?";
-    $values[] = $userId;
-    $values[] = $groupId;
+    $isPending = (int)$data['is_pending'];
 
     try {
-        $stmt = $pdo->prepare($sql);
-        $stmt->execute($values);
+        $stmt = $conn->prepare("UPDATE group_members SET is_pending = ? WHERE user_id = ? AND group_id = ?");
+        $stmt->bind_param("iii", $isPending, $userId, $groupId);
+        $stmt->execute();
         echo json_encode(["message" => "Group membership updated"]);
     } catch (Exception $e) {
         http_response_code(500);
@@ -133,13 +139,19 @@ function updateGroupMember($pdo, $userId, $groupId) {
     }
 }
 
-function deleteGroupMember($pdo, $userId, $groupId) {
+function deleteGroupMember($conn, $userId, $groupId) {
     try {
-        $stmt = $pdo->prepare("DELETE FROM group_members WHERE user_id = ? AND group_id = ?");
-        $stmt->execute([$userId, $groupId]);
+        $stmt = $conn->prepare("DELETE FROM group_members WHERE user_id = ? AND group_id = ?");
+        $stmt->bind_param("ii", $userId, $groupId);
+        $stmt->execute();
         echo json_encode(["message" => "Group member deleted"]);
     } catch (Exception $e) {
         http_response_code(500);
         echo json_encode(["error" => $e->getMessage()]);
     }
+}
+
+// Cleanup any unexpected output
+if (ob_get_length()) {
+    ob_end_flush();
 }
