@@ -1,22 +1,26 @@
 <?php
-    session_start();
-    require_once 'db.php';
+session_start();
+require_once 'db.php';
 
-    if (!isset($_SESSION['user_id'])) {
-        header("Location: login.php");
-        exit();
-    }
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
 
-    $user_id = $_SESSION['user_id'];
+$user_id = $_SESSION['user_id'];
 
 // Fetch enrolled classes
-$sql = "SELECT c.id AS class_id, c.name AS class_name, uStudent.last_name as student_name, uAdmin.last_name as admin_name,
-        (SELECT COUNT(*) FROM class_students WHERE class_id = c.id) AS student_count
-        from classes c
-        join class_students cs on cs.Class_ID = c.id
-        join users uStudent on cs.Student_ID = uStudent.ID
-        join users uAdmin on c.teacher_id = uAdmin.ID
-        WHERE cs.student_id = ?";
+$sql = "SELECT 
+            c.id AS class_id,
+            c.name AS class_name,
+            u.last_name AS student_name,
+            t.last_name AS admin_name,
+            (SELECT COUNT(*) FROM class_members WHERE class_id = c.id) AS student_count
+        FROM classes c
+        JOIN class_members cm ON cm.class_id = c.id
+        JOIN users u ON cm.user_id = u.id
+        JOIN users t ON c.teacher_id = t.id
+        WHERE cm.user_id = ?";
 
 $stmt = $conn->prepare($sql);
 $stmt->bind_param("i", $user_id);
@@ -33,7 +37,7 @@ while ($stmt->fetch()) {
         'student_count' => $student_count
     ];
 }
-
+$stmt->close();
 
 // Handle class join request
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['joinClass'])) {
@@ -50,14 +54,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['joinClass'])) {
         $stmt_check->fetch();
         
         // Check if user is already enrolled
-        $stmt_check_enrollment = $conn->prepare("SELECT * FROM class_students WHERE class_id = ? AND student_id = ?");
+        $stmt_check_enrollment = $conn->prepare("SELECT * FROM class_members WHERE class_id = ? AND student_id = ?");
         $stmt_check_enrollment->bind_param("ii", $class_id, $user_id);
         $stmt_check_enrollment->execute();
         $stmt_check_enrollment->store_result();
         
         if ($stmt_check_enrollment->num_rows == 0) {
             // Enroll user in the class
-            $stmt_insert = $conn->prepare("INSERT INTO class_students (class_id, student_id) VALUES (?, ?)");
+            $stmt_insert = $conn->prepare("INSERT INTO class_members (class_id, student_id) VALUES (?, ?)");
             $stmt_insert->bind_param("ii", $class_id, $user_id);
             $stmt_insert->execute();
             echo "<script>alert('Successfully joined $classCode'); window.location.href = window.location.href;</script>";
@@ -84,14 +88,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
         $stmt_check->fetch();
 
         // Check if user is enrolled
-        $stmt_check_enrollment = $conn->prepare("SELECT * FROM class_students WHERE class_id = ? AND student_id = ?");
+        $stmt_check_enrollment = $conn->prepare("SELECT * FROM class_members WHERE class_id = ? AND student_id = ?");
         $stmt_check_enrollment->bind_param("ii", $leaveClassID, $user_id);
         $stmt_check_enrollment->execute();
         $stmt_check_enrollment->store_result();
 
         if ($stmt_check_enrollment->num_rows == 1) {
             // Delete user from class
-            $stmt_delete = $conn->prepare("DELETE FROM class_students WHERE class_id = ? AND student_id = ?");
+            $stmt_delete = $conn->prepare("DELETE FROM class_members WHERE class_id = ? AND student_id = ?");
             $stmt_delete->bind_param("ii", $leaveClassID, $user_id);
 
             if ($stmt_delete->execute()) {
@@ -230,14 +234,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 
                                 // Use prepared statement to prevent SQL injection
                                 if (!empty($search)) {
-                                    $students_sql = "SELECT u.email FROM class_students cs
+                                    $students_sql = "SELECT u.email FROM class_members cs
                                                     JOIN users u ON cs.student_id = u.id
                                                     WHERE cs.class_id = ? AND (u.first_name LIKE ? OR u.last_name LIKE ? OR u.email LIKE ?)";
                                     $searchParam = "%$search%";
                                     $stmt_students = $conn->prepare($students_sql);
                                     $stmt_students->bind_param("isss", $class_id, $searchParam, $searchParam, $searchParam);
                                 } else {
-                                    $students_sql = "SELECT u.email FROM class_students cs
+                                    $students_sql = "SELECT u.email FROM class_members cs
                                                     JOIN users u ON cs.student_id = u.id
                                                     WHERE cs.class_id = ?";
                                     $stmt_students = $conn->prepare($students_sql);

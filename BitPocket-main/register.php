@@ -23,9 +23,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $check_stmt->execute();
     $check_stmt->store_result();
     if ($check_stmt->num_rows > 0) {
-    $errorMessage = "Email already registered!";
-}
-    
+        $errorMessage = "Email already registered!";
+    }
+
     if ($password !== $confirm_password) {
         $errorMessage = "Passwords do not match!";
     } 
@@ -39,10 +39,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $hashed_password = password_hash($password, PASSWORD_DEFAULT);
             $hashed_answer = password_hash($security_answer, PASSWORD_DEFAULT);
 
-            $sql = "INSERT INTO users (first_name, last_name, email, password, role, school_name, security_question, security_answer) 
+            $sql = "INSERT INTO users 
+                    (first_name, last_name, email, hashed_password, role, school_name, security_question, security_answer) 
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
 
             $stmt = $conn->prepare($sql);
+
             $stmt->bind_param("ssssssss", $first_name, $last_name, $email, $hashed_password, $role, $school_name, $security_question, $hashed_answer);
 
             if ($stmt->execute()) {
@@ -54,6 +56,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
 }
 ?>
+
 
 
 <!DOCTYPE html>
