@@ -41,7 +41,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Perksway</title>
+    <title>Prizeversity</title>
     <link rel="stylesheet" href="studentStyle.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
@@ -114,7 +114,7 @@
 </div>
 
 <footer class="p-3">
-    <p>Perksway</p>
+    <p>Prizeversity</p>
     <ul class="footerList">
         <li><a href="student.php">Dashboard</a></li>
         <li><a href="#">Bit Bazaar</a></li>

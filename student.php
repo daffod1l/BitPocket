@@ -429,7 +429,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['leaveClass'])) {
 
 
 <footer class="p-3">
-    <p>Perksway</p>
+    <p>Prizeversity</p>
     <ul class="footerList">
         <li><a href="student.php">Dashboard</a></li>
         <li><a href="#">Bit Bazaar</a></li>
